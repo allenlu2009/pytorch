@@ -73,6 +73,7 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.tensorboard import SummaryWriter
 
 
 # The output of torchvision datasets are PILImage images of range [0, 1].
@@ -83,7 +84,8 @@ import torchvision.transforms as transforms
 # In[18]:
 
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+writer = SummaryWriter()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
 
@@ -205,13 +207,16 @@ optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 # In[25]:
 
 
-for epoch in range(2):  # loop over the dataset multiple times
+n_iter = 0
+for epoch in range(5):  # loop over the dataset multiple times
 
-    running_loss = 0.0
-    for i, data in enumerate(trainloader, 0):
+    net.train()
+    train_loss = 0.0
+    correct = 0
+    total = 0
+    for batch_idx, (inputs, labels) in enumerate(trainloader, 0):
 
         # get the inputs
-        inputs, labels = data
         inputs, labels = inputs.to(device), labels.to(device)
 
         # zero the parameter gradients
@@ -224,13 +229,23 @@ for epoch in range(2):  # loop over the dataset multiple times
         optimizer.step()
 
         # print statistics
-        running_loss += loss.item()
-        if i % 2000 == 1999:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 2000))
-            running_loss = 0.0
+        train_loss += loss.item()
+        _, predicted = outputs.max(1)
+        total += labels.size(0)
+        correct += predicted.eq(labels).sum().item()
+        
+        if batch_idx % 2000 == 1999:    # print every 2000 mini-batches
+            print('[%d, %5d] loss: %.3f | Acc: %.3f%%' %
+                  (epoch + 1, batch_idx + 1, train_loss/2000, 100.*correct/total))
+            writer.add_scalar('loss', train_loss/2000, n_iter)
+            writer.add_scalar('acc', 100.*correct/total, n_iter)
+            train_loss = 0.0
+            correct = 0
+            total = 0
+            n_iter = n_iter+1
 
 print('Finished Training')
+writer.close()
 
 
 # 5. Test the network on the test data
@@ -295,6 +310,7 @@ print('Predicted: ', ' '.join('%5s' % classes[predicted[j]]
 
 correct = 0
 total = 0
+net.eval()
 with torch.no_grad():
     for data in testloader:
         images, labels = data
@@ -317,11 +333,12 @@ print('Accuracy of the network on the 10000 test images: %d %%' % (
 # 
 # 
 
-# In[45]:
+# In[89]:
 
 
 class_correct = list(0. for i in range(10))
 class_total = list(0. for i in range(10))
+net.eval()
 with torch.no_grad():
     for data in testloader:
         images, labels = data
